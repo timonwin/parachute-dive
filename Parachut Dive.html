@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Parachute Dive</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #030533;
+            font-family: 'Courier New', monospace;
+            color: #00ffff;
+            overflow: hidden;
+            touch-action: manipulation;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            height: 100vh;
+            margin: 0 auto;
+            overflow: hidden;
+        }
+
+        #game-canvas {
+            display: block;
+            background-color: #030533;
+        }
+
+        #title-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: rgba(3, 5, 51, 0.95);
+            z-index: 100;
+        }
+
+        h1 {
+            font-size: 3rem;
+            color: #00ffff;
+            text-shadow: 0 0 10px #00ffff;
+            text-align: center;
+        }
+
+        .subtitle {
+            font-size: 1.5rem;
+            color: #ff00ff;
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+
+        .controls-info {
+            font-size: 1rem;
+            margin-bottom: 2rem;
+            text-align: center;
+            max-width: 80%;
+        }
+
+        #start-button, #restart-button {
+            padding: 10px 20px;
+            background-color: #ff00ff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 1.5rem;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            margin-top: 20px;
+        }
+
+        #start-button:hover, #restart-button:hover {
+            background-color: #cc00cc;
+        }
+
+        #game-over {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: rgba(3, 5, 51, 0.95);
+            z-index: 100;
+        }
+
+        #score-display, #high-score-display {
+            position: absolute;
+            top: 10px;
+            font-size: 24px;
+            z-index: 10;
+        }
+
+        #score-display {
+            left: 10px;
+        }
+
+        #high-score-display {
+            right: 10px;
+        }
+
+        #mobile-controls {
+            position: absolute;
+            bottom: 20px;
+            left: 0;
+            width: 100%;
+            display: flex;
+            justify-content: space-around;
+            z-index: 10;
+            display: none;
+        }
+
+        .control-btn {
+            width: 80px;
+            height: 80px;
+            background-color: rgba(255, 0, 255, 0.3);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            color: white;
+            user-select: none;
+        }
+
+        @media (max-width: 768px) {
+            #mobile-controls {
+                display: flex;
+            }
+
+            h1 {
+                font-size: 2rem;
+            }
+
+            .subtitle {
+                font-size: 1.2rem;
+            }
+        }
+
+        .pixel-effect {
+            image-rendering: pixelated;
+        }
+
+        .retro-glow {
+            text-shadow: 0 0 10px currentColor;
+        }
+
+        #level-indicator {
+            position: absolute;
+            top: 50px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 20px;
+            z-index: 10;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="game-canvas"></canvas>
+        <div id="score-display">SCORE: 0</div>
+        <div id="high-score-display">HIGH: 0</div>
+        <div id="level-indicator">LEVEL: 1</div>
+
+        <div id="title-screen">
+            <h1 class="retro-glow">PARACHUTE DIVE</h1>
+            <div class="subtitle retro-glow">A RETROWAVE DIVING ADVENTURE</div>
+            <div class="controls-info">
+                USE ← → ARROW KEYS TO MOVE<br>
+                COLLECT COINS AND AVOID OBSTACLES<br>
+                FIND THE LANDING ZONE TO COMPLETE LEVELS
+            </div>
+            <button id="start-button" onclick="startGame()">START GAME</button>
+        </div>
+
+        <div id="game-over">
+            <h1 class="retro-glow">GAME OVER</h1>
+            <div class="subtitle" id="final-score">SCORE: 0</div>
+            <div class="subtitle" id="final-level">LEVEL: 1</div>
+            <button id="restart-button" onclick="restartGame()">PLAY AGAIN</button>
+        </div>
+
+        <div id="mobile-controls">
+            <div class="control-btn" id="left-btn">←</div>
+            <div class="control-btn" id="right-btn">→</div>
+        </div>
+    </div>
+
+    <script>
+        // Game configuration
+        const config = {
+            playerSize: 30,
+            playerColor: '#00ffff',
+            parachuteColor: '#ff00ff',
+            gravity: 0.1,
+            jumpForce: -5,
+            moveSpeed: 5,
+            platformWidth: 80,
+            platformHeight: 15,
+            platformColor: '#00ffff',
+            objectSize: 20,
+            coinColor: '#ffff00',
+            enemyColor: '#ff0000',
+            landingZoneColor: '#00ff00',
+            landingZoneWidth: 100,
+            landingZoneHeight: 20,
+            backgroundSpeed: 2.5,  // Increased from 1 to 2.5
+            cameraFollowSpeed: 0.1 // New camera follow smoothing
+        };
+
+        // Game state
+        const game = {
+            canvas: null,
+            ctx: null,
+            width: 0,
+            height: 0,
+            player: {
+                x: 0,
+                y: 0,
+                width: config.playerSize,
+                height: config.playerSize,
+                velocityY: 1,
+                velocityX: 0,
+                isJumping: false,
+                isParachuting: true
+            },
+            platforms: [],
+            coins: [],
+            enemies: [],
+            landingZone: null,
+            score: 0,
+            highScore: 0, // Without localStorage
+            isGameOver: false,
+            isPlaying: false,
+            keysPressed: {},
+            backgroundY: 0,
+            clouds: [],
+            level: 1,
+            levelProgression: 0,
+            levelTarget: 500, // distance needed to complete a level
+            touchControls: {
+                left: false,
+                right: false
+            },
+            cameraY: 0, // New camera Y position for tracking
+            viewportOffset: 0.3 // Player should be at 30% from top of screen
+        };
+
+        // Game initialization
+        function initGame() {
+            // Setup canvas
+            game.canvas = document.getElementById('game-canvas');
+            game.ctx = game.canvas.getContext('2d');
+            
+            // Set canvas size
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+
+            // Reset game state
+            resetGame();
+
+            // Event listeners
+            document.addEventListener('keydown', handleKeyDown);
+            document.addEventListener('keyup', handleKeyUp);
+
+            // Mobile controls
+            const leftBtn = document.getElementById('left-btn');
+            const rightBtn = document.getElementById('right-btn');
+
+            leftBtn.addEventListener('touchstart', () => game.touchControls.left = true);
+            leftBtn.addEventListener('touchend', () => game.touchControls.left = false);
+            rightBtn.addEventListener('touchstart', () => game.touchControls.right = true);
+            rightBtn.addEventListener('touchend', () => game.touchControls.right = false);
+
+            // Also support clicks for testing on desktop
+            leftBtn.addEventListener('mousedown', () => game.touchControls.left = true);
+            leftBtn.addEventListener('mouseup', () => game.touchControls.left = false);
+            rightBtn.addEventListener('mousedown', () => game.touchControls.right = true);
+            rightBtn.addEventListener('mouseup', () => game.touchControls.right = false);
+
+            // Generate initial clouds
+            for (let i = 0; i < 10; i++) {
+                game.clouds.push({
+                    x: Math.random() * game.width,
+                    y: Math.random() * game.height,
+                    size: 20 + Math.random() * 40,
+                    speed: 0.2 + Math.random() * 0.3
+                });
+            }
+
+            // Start the game loop
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Canvas resize handler
+        function resizeCanvas() {
+            const container = document.getElementById('game-container');
+            game.width = container.clientWidth;
+            game.height = container.clientHeight;
+            game.canvas.width = game.width;
+            game.canvas.height = game.height;
+        }
+
+        // Game start
+        function startGame() {
+            document.getElementById('title-screen').style.display = 'none';
+            game.isPlaying = true;
+            game.isGameOver = false;
+            resetGame();
+        }
+
+        // Restart after game over
+        function restartGame() {
+            document.getElementById('game-over').style.display = 'none';
+            game.isPlaying = true;
+            game.isGameOver = false;
+            resetGame();
+        }
+
+        // Reset game state
+        function resetGame() {
+            game.player.x = game.width / 2 - config.playerSize / 2;
+            game.player.y = 50;
+            game.player.velocityY = 1;
+            game.player.velocityX = 0;
+            game.player.isParachuting = true;
+            game.platforms = [];
+            game.coins = [];
+            game.enemies = [];
+            game.score = 0;
+            game.level = 1;
+            game.levelProgression = 0;
+            game.levelTarget = 500;
+            game.backgroundY = 0;
+            game.cameraY = 0;
+            
+            // Generate initial platforms
+            generatePlatforms();
+            
+            // Generate landing zone
+            generateLandingZone();
+
+            // Update score display
+            updateScoreDisplay();
+            updateLevelDisplay();
+        }
+
+        // Generate platforms
+        function generatePlatforms() {
+            const totalPlatforms = 10 + game.level * 2;
+            
+            for (let i = 0; i < totalPlatforms; i++) {
+                const platform = {
+                    x: Math.random() * (game.width - config.platformWidth),
+                    y: (game.height / totalPlatforms) * i + game.height, // Start below screen
+                    width: config.platformWidth,
+                    height: config.platformHeight
+                };
+                
+                game.platforms.push(platform);
+                
+                // Add coins with 40% probability
+                if (Math.random() < 0.4) {
+                    game.coins.push({
+                        x: platform.x + Math.random() * (platform.width - config.objectSize),
+                        y: platform.y - config.objectSize - 10,
+                        width: config.objectSize,
+                        height: config.objectSize,
+                        collected: false
+                    });
+                }
+                
+                // Add enemies with increasing probability based on level
+                if (Math.random() < 0.2 + (game.level * 0.05)) {
+                    game.enemies.push({
+                        x: Math.random() * (game.width - config.objectSize),
+                        y: platform.y - config.objectSize - 10 - Math.random() * 200,
+                        width: config.objectSize,
+                        height: config.objectSize,
+                        velocityX: (Math.random() - 0.5) * 2 * game.level,
+                        velocityY: 0
+                    });
+                }
+            }
+        }
+
+        // Generate landing zone
+        function generateLandingZone() {
+            game.landingZone = {
+                x: game.width / 2 - config.landingZoneWidth / 2,
+                y: game.height + game.levelTarget, // At the target distance
+                width: config.landingZoneWidth,
+                height: config.landingZoneHeight
+            };
+        }
+
+        // Update score display
+        function updateScoreDisplay() {
+            document.getElementById('score-display').textContent = `SCORE: ${game.score}`;
+            document.getElementById('high-score-display').textContent = `HIGH: ${game.highScore}`;
+        }
+
+        // Update level display
+        function updateLevelDisplay() {
+            document.getElementById('level-indicator').textContent = `LEVEL: ${game.level} - ${Math.floor((game.levelProgression / game.levelTarget) * 100)}%`;
+        }
+
+        // Handle keyboard input
+        function handleKeyDown(e) {
+            game.keysPressed[e.key] = true;
+        }
+
+        function handleKeyUp(e) {
+            game.keysPressed[e.key] = false;
+        }
+
+        // Check if player landed on platform
+        function checkPlatformCollisions() {
+            for (const platform of game.platforms) {
+                if (
+                    game.player.x < platform.x + platform.width &&
+                    game.player.x + game.player.width > platform.x &&
+                    game.player.y + game.player.height > platform.y &&
+                    game.player.y + game.player.height < platform.y + platform.height + 5 &&
+                    game.player.velocityY > 0
+                ) {
+                    game.player.y = platform.y - game.player.height;
+                    game.player.velocityY = 0;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Check landing zone collision
+        function checkLandingZoneCollision() {
+            if (!game.landingZone) return false;
+            
+            if (
+                game.player.x < game.landingZone.x + game.landingZone.width &&
+                game.player.x + game.player.width > game.landingZone.x &&
+                game.player.y + game.player.height > game.landingZone.y &&
+                game.player.y + game.player.height < game.landingZone.y + game.landingZone.height + 5 &&
+                game.player.velocityY > 0
+            ) {
+                // Player reached landing zone, advance to next level
+                advanceLevel();
+                return true;
+            }
+            return false;
+        }
+
+        // Advance to the next level
+        function advanceLevel() {
+            game.level++;
+            game.score += 100 * game.level; // Bonus for completing level
+            game.player.y = 50; // Reset position to top
+            game.levelProgression = 0;
+            game.levelTarget = 500 + (game.level * 100); // Increase target distance
+            game.cameraY = 0; // Reset camera position
+            
+            // Clear objects
+            game.platforms = [];
+            game.coins = [];
+            game.enemies = [];
+            
+            // Generate new objects
+            generatePlatforms();
+            generateLandingZone();
+            
+            updateScoreDisplay();
+            updateLevelDisplay();
+        }
+
+        // Check coin collisions
+        function checkCoinCollisions() {
+            for (const coin of game.coins) {
+                if (
+                    !coin.collected &&
+                    game.player.x < coin.x + coin.width &&
+                    game.player.x + game.player.width > coin.x &&
+                    game.player.y < coin.y + coin.height &&
+                    game.player.y + game.player.height > coin.y
+                ) {
+                    coin.collected = true;
+                    game.score += 10;
+                    updateScoreDisplay();
+                }
+            }
+        }
+
+        // Check enemy collisions
+        function checkEnemyCollisions() {
+            for (const enemy of game.enemies) {
+                if (
+                    game.player.x < enemy.x + enemy.width &&
+                    game.player.x + game.player.width > enemy.x &&
+                    game.player.y < enemy.y + enemy.height &&
+                    game.player.y + game.player.height > enemy.y
+                ) {
+                    gameOver();
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Game over
+        function gameOver() {
+            game.isPlaying = false;
+            game.isGameOver = true;
+            
+            // Update high score without localStorage
+            if (game.score > game.highScore) {
+                game.highScore = game.score;
+                updateScoreDisplay();
+            }
+            
+            // Show game over screen
+            document.getElementById('final-score').textContent = `SCORE: ${game.score}`;
+            document.getElementById('final-level').textContent = `LEVEL: ${game.level}`;
+            document.getElementById('game-over').style.display = 'flex';
+        }
+
+        // Main game loop
+        function gameLoop() {
+            // Clear canvas
+            game.ctx.clearRect(0, 0, game.width, game.height);
+            
+            if (game.isPlaying) {
+                // Update camera position to track player
+                updateCamera();
+                
+                // Update player
+                updatePlayer();
+                
+                // Update objects
+                updateObjects();
+                
+                // Check collisions
+                checkCoinCollisions();
+                const hitPlatform = checkPlatformCollisions();
+                const reachedLandingZone = checkLandingZoneCollision();
+                
+                if (!hitPlatform && !reachedLandingZone) {
+                    checkEnemyCollisions();
+                }
+                
+                // Scroll background
+                game.backgroundY -= config.backgroundSpeed;
+                game.levelProgression += config.backgroundSpeed;
+                updateLevelDisplay();
+                
+                // Check for game over conditions
+                if (game.player.y > game.height + 100) {
+                    gameOver();
+                }
+            }
+            
+            // Draw background with camera offset
+            drawBackground();
+            
+            // Draw game objects
+            drawObjects();
+            
+            // Draw player
+            drawPlayer();
+            
+            // Continue game loop
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Update camera position to follow player
+        function updateCamera() {
+            // Target position - keep player at 30% from top of screen
+            const targetY = game.player.y - game.height * game.viewportOffset;
+            
+            // Smoothly move camera toward target position
+            game.cameraY += (targetY - game.cameraY) * config.cameraFollowSpeed;
+            
+            // Ensure camera doesn't go above 0 (top of level)
+            game.cameraY = Math.max(0, game.cameraY);
+        }
+
+        // Update player position and state
+        function updatePlayer() {
+            // Handle input
+            if ((game.keysPressed['ArrowLeft'] || game.touchControls.left) && game.player.x > 0) {
+                game.player.velocityX = -config.moveSpeed;
+            } else if ((game.keysPressed['ArrowRight'] || game.touchControls.right) && game.player.x < game.width - game.player.width) {
+                game.player.velocityX = config.moveSpeed;
+            } else {
+                game.player.velocityX = 0;
+            }
+            
+            // Apply gravity (reduced while parachuting)
+            if (game.player.isParachuting) {
+                game.player.velocityY += config.gravity * 0.3;
+                // Cap max falling speed
+                if (game.player.velocityY > 2) {
+                    game.player.velocityY = 2;
+                }
+            } else {
+                game.player.velocityY += config.gravity;
+            }
+            
+            // Update position
+            game.player.x += game.player.velocityX;
+            game.player.y += game.player.velocityY;
+            
+            // Keep player within bounds
+            if (game.player.x < 0) {
+                game.player.x = 0;
+            } else if (game.player.x > game.width - game.player.width) {
+                game.player.x = game.width - game.player.width;
+            }
+        }
+
+        // Update game objects
+        function updateObjects() {
+            // Move platforms and other objects up with scrolling
+            game.platforms.forEach(platform => {
+                platform.y -= config.backgroundSpeed;
+            });
+            
+            game.coins.forEach(coin => {
+                coin.y -= config.backgroundSpeed;
+            });
+            
+            game.enemies.forEach(enemy => {
+                enemy.y -= config.backgroundSpeed;
+                
+                // Horizontal movement
+                enemy.x += enemy.velocityX;
+                
+                // Bounce off walls
+                if (enemy.x <= 0 || enemy.x >= game.width - enemy.width) {
+                    enemy.velocityX = -enemy.velocityX;
+                }
+            });
+            
+            if (game.landingZone) {
+                game.landingZone.y -= config.backgroundSpeed;
+            }
+            
+            // Remove objects that are far off screen (not just immediate top)
+            game.platforms = game.platforms.filter(platform => platform.y + platform.height > -200);
+            game.coins = game.coins.filter(coin => coin.y + coin.height > -200);
+            game.enemies = game.enemies.filter(enemy => enemy.y + enemy.height > -200);
+            
+            // Generate new objects if needed
+            if (game.platforms.length < 8) {
+                generatePlatforms();
+            }
+        }
+
+        // Draw background
+        function drawBackground() {
+            // Draw gradient background
+            const gradient = game.ctx.createLinearGradient(0, 0, 0, game.height);
+            gradient.addColorStop(0, '#030533');
+            gradient.addColorStop(1, '#160080');
+            game.ctx.fillStyle = gradient;
+            game.ctx.fillRect(0, 0, game.width, game.height);
+            
+            // Draw grid lines with camera offset
+            game.ctx.strokeStyle = 'rgba(0, 255, 255, 0.2)';
+            game.ctx.lineWidth = 1;
+            
+            // Horizontal grid lines
+            const gridSpacing = 40;
+            const backgroundOffsetY = (game.backgroundY - game.cameraY) % gridSpacing;
+            
+            for (let y = backgroundOffsetY; y < game.height; y += gridSpacing) {
+                game.ctx.beginPath();
+                game.ctx.moveTo(0, y);
+                game.ctx.lineTo(game.width, y);
+                game.ctx.stroke();
+            }
+            
+            // Vertical grid lines
+            for (let x = 0; x < game.width; x += gridSpacing) {
+                game.ctx.beginPath();
+                game.ctx.moveTo(x, 0);
+                game.ctx.lineTo(x, game.height);
+                game.ctx.stroke();
+            }
+            
+            // Draw clouds with camera offset
+            game.ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+            game.clouds.forEach(cloud => {
+                cloud.y = (cloud.y - cloud.speed) % game.height;
+                if (cloud.y < 0) cloud.y = game.height;
+                
+                const drawY = cloud.y - game.cameraY * 0.5; // Parallax effect
+                
+                // Only draw if visible
+                if (drawY > -cloud.size && drawY < game.height + cloud.size) {
+                    game.ctx.beginPath();
+                    game.ctx.arc(cloud.x, drawY, cloud.size, 0, Math.PI * 2);
+                    game.ctx.fill();
+                }
+            });
+        }
+
+        // Draw game objects
+        function drawObjects() {
+            // Draw platforms
+            game.ctx.fillStyle = config.platformColor;
+            game.platforms.forEach(platform => {
+                const drawY = platform.y - game.cameraY;
+                
+                // Only draw if visible
+                if (drawY > -platform.height && drawY < game.height) {
+                    game.ctx.fillRect(platform.x, drawY, platform.width, platform.height);
+                }
+            });
+            
+            // Draw coins
+            game.ctx.fillStyle = config.coinColor;
+            game.coins.forEach(coin => {
+                if (!coin.collected) {
+                    const drawY = coin.y - game.cameraY;
+                    
+                    // Only draw if visible
+                    if (drawY > -coin.height && drawY < game.height) {
+                        game.ctx.beginPath();
+                        game.ctx.arc(
+                            coin.x + coin.width / 2,
+                            drawY + coin.height / 2,
+                            coin.width / 2,
+                            0,
+                            Math.PI * 2
+                        );
+                        game.ctx.fill();
+                        
+                        // Draw dollar sign
+                        game.ctx.fillStyle = '#000';
+                        game.ctx.font = '15px Arial';
+                        game.ctx.textAlign = 'center';
+                        game.ctx.textBaseline = 'middle';
+                        game.ctx.fillText('$', coin.x + coin.width / 2, drawY + coin.height / 2);
+                        game.ctx.fillStyle = config.coinColor;
+                    }
+                }
+            });
+            
+            // Draw enemies
+            game.ctx.fillStyle = config.enemyColor;
+            game.ctx.strokeStyle = config.enemyColor;
+            game.enemies.forEach(enemy => {
+                const drawY = enemy.y - game.cameraY;
+                
+                // Only draw if visible
+                if (drawY > -enemy.height && drawY < game.height) {
+                    // Draw a spike ball
+                    game.ctx.beginPath();
+                    game.ctx.arc(
+                        enemy.x + enemy.width / 2,
+                        drawY + enemy.height / 2,
+                        enemy.width / 2,
+                        0,
+                        Math.PI * 2
+                    );
+                    game.ctx.fill();
+                    
+                    // Draw spikes
+                    for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 4) {
+                        const spikeLength = enemy.width * 0.3;
+                        const startX = enemy.x + enemy.width / 2 + (enemy.width / 2) * Math.cos(angle);
+                        const startY = drawY + enemy.height / 2 + (enemy.height / 2) * Math.sin(angle);
+                        const endX = startX + spikeLength * Math.cos(angle);
+                        const endY = startY + spikeLength * Math.sin(angle);
+                        
+                        game.ctx.beginPath();
+                        game.ctx.moveTo(startX, startY);
+                        game.ctx.lineTo(endX, endY);
+                        game.ctx.lineWidth = 3;
+                        game.ctx.stroke();
+                    }
+                }
+            });
+            
+            // Draw landing zone
+            if (game.landingZone) {
+                const drawY = game.landingZone.y - game.cameraY;
+                
+                // Only draw if visible or approaching
+                if (drawY > -game.landingZone.height && drawY < game.height + 300) {
+                    game.ctx.fillStyle = config.landingZoneColor;
+                    game.ctx.fillRect(
+                        game.landingZone.x,
+                        drawY,
+                        game.landingZone.width,
+                        game.landingZone.height
+                    );
+                    
+                    // Draw landing zone markings
+                    game.ctx.fillStyle = '#000';
+                    for (let i = 0; i < game.landingZone.width; i += 20) {
+                        game.ctx.fillRect(
+                            game.landingZone.x + i,
+                            drawY,
+                            10,
+                            game.landingZone.height
+                        );
+                    }
+                    
+                    // Draw "LAND HERE" text
+                    game.ctx.fillStyle = '#fff';
+                    game.ctx.font = '14px Arial';
+                    game.ctx.textAlign = 'center';
+                    game.ctx.fillText(
+                        'LAND HERE',
+                        game.landingZone.x + game.landingZone.width / 2,
+                        drawY + game.landingZone.height / 2 + 5
+                    );
+                    
+                    // If landing zone is approaching but not visible yet, show an arrow
+                    if (drawY > game.height) {
+                        game.ctx.fillStyle = config.landingZoneColor;
+                        game.ctx.beginPath();
+                        game.ctx.moveTo(game.landingZone.x + game.landingZone.width / 2, game.height - 30);
+                        game.ctx.lineTo(game.landingZone.x + game.landingZone.width / 2 - 20, game.height - 10);
+                        game.ctx.lineTo(game.landingZone.x + game.landingZone.width / 2 + 20, game.height - 10);
+                        game.ctx.closePath();
+                        game.ctx.fill();
+                    }
+                }
+            }
+        }
+
+        // Draw player character
+        function drawPlayer() {
+            // Draw player with camera offset
+            const drawY = game.player.y - game.cameraY;
+            
+            // Draw parachute
+            if (game.player.isParachuting) {
+                game.ctx.fillStyle = config.parachuteColor;
+                
+                // Parachute dome
+                game.ctx.beginPath();
+                game.ctx.arc(
+                    game.player.x + game.player.width / 2,
+                    drawY - 20,
+                    game.player.width,
+                    Math.PI,
+                    0,
+                    true
+                );
+                game.ctx.fill();
+                
+                // Parachute strings
+                game.ctx.strokeStyle = '#fff';
+                game.ctx.lineWidth = 2;
+                
+                // Left string
+                game.ctx.beginPath();
+
+                game.ctx.moveTo(game.player.x, drawY - 20);
+                game.ctx.lineTo(game.player.x + game.player.width / 4, drawY);
+                game.ctx.stroke();
+                
+                // Right string
+                game.ctx.beginPath();
+                game.ctx.moveTo(game.player.x + game.player.width, drawY - 20);
+                game.ctx.lineTo(game.player.x + 3 * game.player.width / 4, drawY);
+                game.ctx.stroke();
+            }
+            
+            // Draw player body
+            game.ctx.fillStyle = config.playerColor;
+            game.ctx.fillRect(
+                game.player.x,
+                drawY,
+                game.player.width,
+                game.player.height
+            );
+            
+            // Draw player features (simple face)
+            game.ctx.fillStyle = '#000';
+            
+            // Eyes
+            game.ctx.fillRect(
+                game.player.x + game.player.width / 4 - 2,
+                drawY + game.player.height / 3,
+                4,
+                4
+            );
+            game.ctx.fillRect(
+                game.player.x + 3 * game.player.width / 4 - 2,
+                drawY + game.player.height / 3,
+                4,
+                4
+            );
+            
+            // Smile
+            game.ctx.beginPath();
+            game.ctx.arc(
+                game.player.x + game.player.width / 2,
+                drawY + 2 * game.player.height / 3,
+                game.player.width / 5,
+                0,
+                Math.PI,
+                false
+            );
+            game.ctx.stroke();
+        }
+
+        // Start the game when page loads
+        window.addEventListener('load', function() {
+            // Slight delay to ensure DOM is fully loaded
+            setTimeout(initGame, 100);
+        });
+    </script>
+</body>
+</html>
